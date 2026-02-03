@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>VexFlow 랜덤 피아노 연습</title>
+
+  <script src="./vexflow-debug.js"></script>
+
+  <style>
+    :root{
+      --card:#f6f7f9;
+      --border:#d9dde3;
+      --text:#111;
+      --muted:#555;
+      --btn:#ffffff;
+      --btnb:#cfd5de;
+      --hl: rgba(255, 231, 140, 0.55);
+    }
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;padding:16px;color:var(--text);background:#fff;}
+    h1{font-size:22px;margin:0 0 8px;}
+    .desc{color:var(--muted);font-size:13px;line-height:1.35;margin:0 0 12px;}
+    .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px;}
+    .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0;}
+    .row label{font-size:13px;color:var(--muted);margin-right:4px;}
+    input[type="number"],input[type="text"],select{border:1px solid var(--btnb);border-radius:10px;padding:10px 10px;font-size:15px;background:#fff;min-width:90px;}
+    input[type="text"]{min-width:160px;}
+    button{border:1px solid var(--btnb);background:var(--btn);border-radius:12px;padding:10px 12px;font-size:15px;cursor:pointer;}
+    button.primary{background:#eaf1ff;border-color:#bcd0ff;font-weight:700;}
+    button:disabled{opacity:.45;cursor:not-allowed;}
+    .chip{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border-radius:999px;border:1px solid var(--btnb);background:#fff;font-size:13px;color:var(--muted);}
+    .warn{color:#b35c00;font-size:12.5px;line-height:1.35;margin-top:6px;}
+    .sheetWrap{border:1px solid var(--border);border-radius:14px;overflow:hidden;background:#fff;}
+    #sheetDesktop{position:relative;width:100%;padding:10px;box-sizing:border-box;}
+    #hlDesktop{position:absolute;background:var(--hl);border-radius:8px;pointer-events:none;display:none;z-index:5;box-shadow:0 0 0 1px rgba(180,140,0,.15) inset;}
+    #sheetMobile{display:none;padding:10px;box-sizing:border-box;}
+
+    .mobileStrip{display:flex;flex-wrap:nowrap;gap:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:10px;}
+
+    .mobileCard{
+      flex:0 0 auto;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:#fff;
+      position:relative;
+      padding:10px;
+      box-sizing:border-box;
+      /* ✅ 모바일에서 악보 잘림/답답함 완화: 카드 높이 확보 */
+      min-height: 240px;
+    }
+
+    .mobileHL{position:absolute;left:0;top:0;right:0;bottom:0;background:var(--hl);border-radius:12px;pointer-events:none;display:none;}
+    .status{font-size:13px;color:var(--muted);margin-top:8px;padding:0 2px 12px;}
+    textarea{width:100%;min-height:120px;border:1px solid var(--btnb);border-radius:12px;padding:10px;font-size:12px;box-sizing:border-box;background:#fff;}
+    @media (max-width:520px){
+      body{padding:12px;}
+      h1{font-size:20px;}
+      input,select,button{font-size:14px;padding:10px;}
+      .mobileCard{min-height: 260px;} /* ✅ 아주 작은 화면에서 조금 더 */
+    }
+  </style>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <meta name="theme-color" content="#ffffff">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+</head>
+
+<body>
+  <h1>VexFlow 랜덤 피아노 연습</h1>
+  <p class="desc">
+    - 한 마디 = 한 문제(온음표, 꼬리 없음).<br/>
+    - 자동 넘김: “마디 끝” → <b>다음 마디 1박(다운비트)</b>에 맞춰 넘어감.<br/>
+    - 모드: PC(전체) / 모바일(2마디: 현재+다음, <b>2열 고정</b>)
+  </p>
+
+  <div class="panel">
+    <div class="row">
+      <button class="primary" id="btnNewAll">새 문제 전체</button>
+      <button id="btnPrev" disabled>이전 문제</button>
+
+      <!-- ✅ 수정: id를 btnRestart로 통일 (하이픈 제거) -->
+      <button id="btnRestart">처음부터 다시</button>
+
+      <span class="chip">
+        <label>모드</label>
+        <select id="modeSel">
+          <option value="desktop">PC(전체)</option>
+          <option value="mobile2">모바일(2마디)</option>
+        </select>
+      </span>
+
+      <span class="chip">
+        <label>줄 수</label>
+        <input type="number" id="numLines" min="1" max="12" value="4"/>
+      </span>
+
+      <span class="chip">
+        <label>한 줄 마디</label>
+        <input type="number" id="perLine" min="1" max="12" value="7"/>
+      </span>
+    </div>
+
+    <div class="row">
+      <span class="chip">
+        <label>BPM</label>
+        <input type="number" id="bpm" min="30" max="240" value="80"/>
+      </span>
+
+      <span class="chip">
+        <label>박자(마디)</label>
+        <select id="beatsPerBar">
+          <option value="4">4박</option>
+          <option value="3">3박</option>
+          <option value="2">2박</option>
+          <option value="1">1박</option>
+        </select>
+      </span>
+
+      <label class="chip">
+        <input type="checkbox" id="autoAdvance" checked />
+        자동 넘김
+      </label>
+
+      <button class="primary" id="btnStart">메트로놈 시작</button>
+      <button id="btnStop" disabled>정지</button>
+
+      <label class="chip">
+        <input type="checkbox" id="showAdvanceBox" checked />
+        자동넘김 표시
+      </label>
+
+      <div class="row">
+        <span class="chip">
+          <label>이동 마디</label>
+          <input type="number" id="jumpBar" min="1" value="1" style="width:90px;" />
+         </span>
+         <button id="btnJump">이동</button>
+         <button class="primary" id="btnJumpStart">이동 후 메트로놈 시작</button>
+     </div>
+
+    </div>
+
+    <div class="warn">
+      ⚠️ iPhone/Android는 “사용자 터치 후”에만 소리가 날 수 있음 → 반드시 <b>메트로놈 시작</b> 버튼을 눌러 오디오를 깨워야 함.
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <input type="text" id="saveName" placeholder="저장 세트 이름(예: 2026-02-02 80bpm)" />
+      <button class="primary" id="btnSaveSet">세트 저장</button>
+
+      <select id="savedList" style="min-width:220px;"></select>
+      <button id="btnLoadSet">불러오기</button>
+      <button id="btnDeleteSet">삭제</button>
+    </div>
+
+    <div class="row">
+      <button id="btnExport">JSON 내보내기</button>
+      <input type="file" id="fileImport" accept="application/json" style="display:none;" />
+      <button id="btnImport">JSON 가져오기</button>
+      <button id="btnClearAll">모든 저장 초기화</button>
+    </div>
+
+    <div class="row" style="width:100%;">
+      <textarea id="jsonBox" placeholder="내보낸 JSON이 여기 표시됨 (또는 가져오기할 JSON을 붙여넣어도 됨)"></textarea>
+    </div>
+  </div>
+
+  <div class="sheetWrap">
+    <div id="sheetDesktop">
+      <div id="hlDesktop"></div>
+    </div>
+
+    <div id="sheetMobile">
+      <div class="mobileStrip" id="mobileStrip">
+        <div class="mobileCard" id="mCardA">
+          <div class="mobileHL" id="mHL"></div>
+          <div id="mA"></div>
+        </div>
+        <div class="mobileCard" id="mCardB">
+          <div id="mB"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="status">대기</div>
+
+<script>
+(() => {
+  // ✅ VexFlow 글로벌 호환 (Vex 또는 VexFlow)
+  const VF = (window.Vex && window.Vex.Flow) ? window.Vex.Flow : window.VexFlow;
+  if(!VF){
+    document.getElementById("status").textContent = "에러: VexFlow 로드 실패 (vexflow-debug.js 경로 확인)";
+    return;
+  }
+
+  const LS_LAST = "piano_last_session_v2";
+  const LS_SETS = "piano_saved_sets_v2";
+
+  let session = null;
+  let history = [];
+  let currentBar = 0;
+
+  let measureBoxes = [];
+  let desktopRenderer = null;
+
+  let audioCtx = null;
+  let schedulerTimer = null;
+  let nextNoteTime = 0;
+  let beatInBar = 1;
+  let beatsPerBar = 4;
+  let bpm = 80;
+  let advanceArmed = false;
+  let beatIndexGlobal = 0;
+
+  const statusEl = document.getElementById("status");
+
+  const sheetDesktop = document.getElementById("sheetDesktop");
+  const hlDesktop = document.getElementById("hlDesktop");
+  const sheetMobile = document.getElementById("sheetMobile");
+  const mobileStrip = document.getElementById("mobileStrip");
+  const mCardA = document.getElementById("mCardA");
+  const mCardB = document.getElementById("mCardB");
+  const mHL = document.getElementById("mHL");
+  const mA = document.getElementById("mA");
+  const mB = document.getElementById("mB");
+
+  const numLinesEl = document.getElementById("numLines");
+  const perLineEl  = document.getElementById("perLine");
+  const bpmEl      = document.getElementById("bpm");
+  const beatsEl    = document.getElementById("beatsPerBar");
+  const autoEl     = document.getElementById("autoAdvance");
+  const showBoxEl  = document.getElementById("showAdvanceBox");
+  const modeSelEl  = document.getElementById("modeSel");
+
+  const btnNewAll  = document.getElementById("btnNewAll");
+  const btnPrev    = document.getElementById("btnPrev");
+  const btnStart   = document.getElementById("btnStart");
+  const btnStop    = document.getElementById("btnStop");
+
+  // ✅ 추가: “처음부터 다시” 버튼 변수
+  const btnRestart = document.getElementById("btnRestart");
+
+  const jumpBarEl = document.getElementById("jumpBar");
+  const btnJump = document.getElementById("btnJump");
+  const btnJumpStart = document.getElementById("btnJumpStart");
+  const saveNameEl = document.getElementById("saveName");
+  const btnSaveSet = document.getElementById("btnSaveSet");
+  const savedList  = document.getElementById("savedList");
+  const btnLoadSet = document.getElementById("btnLoadSet");
+  const btnDelete  = document.getElementById("btnDeleteSet");
+  const btnExport  = document.getElementById("btnExport");
+  const btnImport  = document.getElementById("btnImport");
+  const fileImport = document.getElementById("fileImport");
+  const btnClearAll= document.getElementById("btnClearAll");
+  const jsonBox    = document.getElementById("jsonBox");
+
+  const TREBLE = ["c/4","d/4","e/4","f/4","g/4","a/4","b/4","c/5","d/5","e/5","f/5","g/5","a/5","b/5","c/6","d/6","e/6"];
+  const BASS   = ["c/2","d/2","e/2","f/2","g/2","a/2","b/2","c/3","d/3","e/3","f/3","g/3","a/3","b/3","c/4","d/4"];
+
+  function randInt(n){ return Math.floor(Math.random()*n); }
+
+  function pitchToMidi(p){
+    const [s, oStr] = p.split("/");
+    const o = parseInt(oStr,10);
+    const step = s[0].toLowerCase();
+    const map = {c:0,d:2,e:4,f:5,g:7,a:9,b:11};
+    return (o+1)*12 + map[step];
+  }
+
+  function pickUnique(pitches, count){
+    const chosen = new Set();
+    while(chosen.size < count){
+      chosen.add(pitches[randInt(pitches.length)]);
+    }
+    return [...chosen];
+  }
+
+  function pickTrebleKeys(){
+    const count = Math.random() < 0.55 ? 1 : 2;
+    if(count === 1) return pickUnique(TREBLE, 1);
+
+    for(let tries=0; tries<200; tries++){
+      const a = TREBLE[randInt(TREBLE.length)];
+      const b = TREBLE[randInt(TREBLE.length)];
+      if(a===b) continue;
+      const span = Math.abs(pitchToMidi(a) - pitchToMidi(b));
+      if(span <= 12) return [a,b];
+    }
+    return pickUnique(TREBLE, 2);
+  }
+
+  function pickBassKeys(){
+    const count = Math.random() < 0.5 ? 1 : 2;
+    return pickUnique(BASS, count);
+  }
+
+  function clampInt(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
+  function makeSession(lines, perLine, bpm, beatsPerBar){
+    const total = lines * perLine;
+    const measures = [];
+    for(let i=0;i<total;i++){
+      measures.push({ treble: pickTrebleKeys(), bass: pickBassKeys() });
+    }
+    return { version:2, createdAt:Date.now(), lines, perLine, bpm, beatsPerBar, measures };
+  }
+
+  function saveLastSession(){
+    try{ localStorage.setItem(LS_LAST, JSON.stringify({session, currentBar})); }catch(e){}
+  }
+
+  function loadLastSession(){
+    try{
+      const raw = localStorage.getItem(LS_LAST);
+      if(!raw) return false;
+      const obj = JSON.parse(raw);
+      if(!obj?.session?.measures) return false;
+      session = obj.session;
+      currentBar = Math.max(0, Math.min(session.measures.length-1, obj.currentBar||0));
+      numLinesEl.value = session.lines;
+      perLineEl.value  = session.perLine;
+      bpmEl.value      = session.bpm;
+      beatsEl.value    = session.beatsPerBar;
+      return true;
+    }catch(e){ return false; }
+  }
+
+  function readSets(){ try{ return JSON.parse(localStorage.getItem(LS_SETS) || "{}") || {}; }catch(e){ return {}; } }
+  function writeSets(sets){ localStorage.setItem(LS_SETS, JSON.stringify(sets)); }
+
+  function refreshSavedList(){
+    const sets = readSets();
+    const names = Object.keys(sets).sort((a,b)=>(sets[b].savedAt||0)-(sets[a].savedAt||0));
+    savedList.innerHTML = "";
+    if(names.length===0){
+      const opt=document.createElement("option");
+      opt.value=""; opt.textContent="(저장된 세트 없음)";
+      savedList.appendChild(opt);
+      return;
+    }
+    for(const name of names){
+      const opt=document.createElement("option");
+      opt.value=name;
+      const d = new Date(sets[name].savedAt || Date.now());
+      opt.textContent = `${name} · ${d.toLocaleString()}`;
+      savedList.appendChild(opt);
+    }
+  }
+
+  function saveSetByName(name){
+    if(!session) return;
+    const sets = readSets();
+    sets[name] = { savedAt: Date.now(), data: session };
+    writeSets(sets);
+    refreshSavedList();
+  }
+
+  function loadSetByName(name){
+    const sets = readSets();
+    const item = sets[name];
+    if(!item?.data?.measures) return false;
+    history.push(JSON.parse(JSON.stringify(session)));
+    btnPrev.disabled = history.length===0;
+    session = item.data;
+    currentBar = 0;
+    numLinesEl.value = session.lines;
+    perLineEl.value  = session.perLine;
+    bpmEl.value      = session.bpm;
+    beatsEl.value    = session.beatsPerBar;
+    saveLastSession();
+    return true;
+  }
+
+  function deleteSetByName(name){
+    const sets = readSets();
+    if(!sets[name]) return;
+    delete sets[name];
+    writeSets(sets);
+    refreshSavedList();
+  }
+
+  function setModeVisibility(){
+    const mode = modeSelEl.value;
+    if(mode === "mobile2"){
+      sheetDesktop.style.display = "none";
+      sheetMobile.style.display = "block";
+    }else{
+      sheetDesktop.style.display = "block";
+      sheetMobile.style.display = "none";
+    }
+  }
+
+  function clearDesktop(){
+    [...sheetDesktop.querySelectorAll("svg")].forEach(el=>el.remove());
+    measureBoxes = [];
+    hlDesktop.style.display = "none";
+  }
+
+  function clearMobile(){
+    mA.innerHTML = "";
+    mB.innerHTML = "";
+    mHL.style.display = "none";
+  }
+
+  function updateDesktopHighlight(){
+    if(modeSelEl.value !== "desktop") return;
+    if(!session) return;
+
+    if(!showBoxEl.checked){
+      hlDesktop.style.display = "none";
+      return;
+    }
+    const box = measureBoxes[currentBar];
+    if(!box){ hlDesktop.style.display="none"; return; }
+
+    hlDesktop.style.display = "block";
+    hlDesktop.style.left = box.x + "px";
+    hlDesktop.style.top  = box.y + "px";
+    hlDesktop.style.width = box.w + "px";
+    hlDesktop.style.height= box.h + "px";
+  }
+
+  function drawDesktop(){
+    clearDesktop();
+    if(!session) return;
+
+    const width = Math.max(360, sheetDesktop.clientWidth - 2);
+    const lines = session.lines;
+    const perLine = session.perLine;
+
+    const lineHeight = 190;
+    const pad = 10;
+    const totalHeight = pad + lines * lineHeight + 30;
+
+    desktopRenderer = new VF.Renderer(sheetDesktop, VF.Renderer.Backends.SVG);
+    desktopRenderer.resize(width, totalHeight);
+    const ctx = desktopRenderer.getContext();
+
+    const marginLeft = 18;
+    const usable = width - marginLeft - 16;
+    const measureW = Math.max(90, Math.floor(usable / perLine));
+
+    let barIndex = 0;
+
+    try{
+      for(let line=0; line<lines; line++){
+        const yTreble = pad + line * lineHeight;
+        const yBass = yTreble + 92;
+
+        for(let m=0; m<perLine; m++){
+          const x = marginLeft + m * measureW;
+          const isFirst = (m===0);
+          const isLast = (m===perLine-1);
+
+          const tStave = new VF.Stave(x, yTreble, measureW);
+          const bStave = new VF.Stave(x, yBass, measureW);
+
+          if(isFirst){
+            tStave.addClef("treble");
+            bStave.addClef("bass");
+          }
+          tStave.setEndBarType(isLast ? VF.Barline.type.END : VF.Barline.type.SINGLE);
+          bStave.setEndBarType(isLast ? VF.Barline.type.END : VF.Barline.type.SINGLE);
+
+          tStave.setContext(ctx).draw();
+          bStave.setContext(ctx).draw();
+
+          if(isFirst){
+            new VF.StaveConnector(tStave, bStave).setType("brace").setContext(ctx).draw();
+          }
+          new VF.StaveConnector(tStave, bStave).setType("single").setContext(ctx).draw();
+
+          const meas = session.measures[barIndex];
+
+          const tNote = new VF.StaveNote({ clef:"treble", keys: meas.treble, duration:"w" });
+          const bNote = new VF.StaveNote({ clef:"bass", keys: meas.bass, duration:"w" });
+
+          const tVoice = new VF.Voice({ num_beats:4, beat_value:4 }).addTickables([tNote]);
+          const bVoice = new VF.Voice({ num_beats:4, beat_value:4 }).addTickables([bNote]);
+
+          const fmtT = new VF.Formatter();
+          fmtT.joinVoices([tVoice]).formatToStave([tVoice], tStave);
+
+          const fmtB = new VF.Formatter();
+          fmtB.joinVoices([bVoice]).formatToStave([bVoice], bStave);
+
+          tVoice.draw(ctx, tStave);
+          bVoice.draw(ctx, bStave);
+
+          const boxX = x;
+          const boxY = yTreble;
+          const boxW = measureW;
+          const boxH = (yBass + bStave.getHeight()) - yTreble;
+          measureBoxes.push({x: boxX, y: boxY, w: boxW, h: boxH});
+
+          barIndex++;
+        }
+      }
+    }catch(err){
+      statusEl.textContent = "렌더 에러: " + (err?.message || err);
+    }
+
+    updateDesktopHighlight();
+  }
+
+  // ✅ 모바일 “잘림” 해결 핵심: SVG 높이/좌측 여백 확장
+  function drawOneMeasureInto(rootDiv, idx, width){
+    rootDiv.innerHTML = "";
+
+    const renderer = new VF.Renderer(rootDiv, VF.Renderer.Backends.SVG);
+
+    // ✅ 높이 늘림 (기존 190)
+    renderer.resize(width, 220);
+
+    const ctx = renderer.getContext();
+
+    // ✅ 괄호/클리프가 왼쪽 밖으로 나가며 잘리는 문제 해결
+    const x = 26;               // 기존 10 → 26
+    const w = width - 36;       // 기존 width-20 → width-36
+    const yTreble = 14;
+    const yBass = 14 + 108;
+
+    const tStave = new VF.Stave(x, yTreble, w).addClef("treble");
+    const bStave = new VF.Stave(x, yBass, w).addClef("bass");
+    tStave.setEndBarType(VF.Barline.type.END);
+    bStave.setEndBarType(VF.Barline.type.END);
+
+    tStave.setContext(ctx).draw();
+    bStave.setContext(ctx).draw();
+
+    new VF.StaveConnector(tStave, bStave).setType("brace").setContext(ctx).draw();
+    new VF.StaveConnector(tStave, bStave).setType("single").setContext(ctx).draw();
+
+    const meas = session.measures[idx];
+
+    const tNote = new VF.StaveNote({ clef:"treble", keys: meas.treble, duration:"w" });
+    const bNote = new VF.StaveNote({ clef:"bass", keys: meas.bass, duration:"w" });
+
+    const tVoice = new VF.Voice({ num_beats:4, beat_value:4 }).addTickables([tNote]);
+    const bVoice = new VF.Voice({ num_beats:4, beat_value:4 }).addTickables([bNote]);
+
+    const fmtT = new VF.Formatter();
+    fmtT.joinVoices([tVoice]).formatToStave([tVoice], tStave);
+
+    const fmtB = new VF.Formatter();
+    fmtB.joinVoices([bVoice]).formatToStave([bVoice], bStave);
+
+    tVoice.draw(ctx, tStave);
+    bVoice.draw(ctx, bStave);
+  }
+
+  function drawMobile2(){
+    clearMobile();
+    if(!session) return;
+
+    const totalW = Math.max(360, sheetMobile.clientWidth - 2);
+    const gap = 10;
+    const cardW = Math.max(260, Math.floor((totalW - gap) / 2));
+
+    mCardA.style.width = cardW + "px";
+    mCardB.style.width = cardW + "px";
+
+    const a = currentBar;
+    const b = Math.min(session.measures.length - 1, currentBar + 1);
+
+    try{
+      drawOneMeasureInto(mA, a, cardW);
+      drawOneMeasureInto(mB, b, cardW);
+    }catch(err){
+      statusEl.textContent = "모바일 렌더 에러: " + (err?.message || err);
+    }
+
+    if(showBoxEl.checked) mHL.style.display = "block";
+    else mHL.style.display = "none";
+
+    mobileStrip.scrollLeft = 0;
+  }
+
+  function render(){
+    if(!session) return;
+    setModeVisibility();
+    if(modeSelEl.value === "mobile2") drawMobile2();
+    else drawDesktop();
+    updateStatus();
+  }
+
+  function updateStatus(extra=""){
+    if(!session){ statusEl.textContent = "대기"; return; }
+    const total = session.measures.length;
+    statusEl.textContent = `마디: ${currentBar+1}/${total}${extra ? " · " + extra : ""}`;
+  }
+
+  async function ensureAudio(){
+    if(audioCtx && audioCtx.state !== "closed") return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === "suspended"){ try{ await audioCtx.resume(); }catch(e){} }
+  }
+
+  function scheduleClick(timeSec, isDownbeat){
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "square";
+    osc.frequency.value = isDownbeat ? 1200 : 880;
+
+    gain.gain.setValueAtTime(0.0001, timeSec);
+    gain.gain.exponentialRampToValueAtTime(isDownbeat ? 0.18 : 0.12, timeSec + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, timeSec + 0.06);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(timeSec);
+    osc.stop(timeSec + 0.07);
+  }
+
+  function scheduleUI(fn, timeSec){
+    const delayMs = Math.max(0, (timeSec - audioCtx.currentTime) * 1000);
+    setTimeout(fn, delayMs);
+  }
+
+  function scheduler(){
+    const lookahead = 0.12;
+    const secondsPerBeat = 60.0 / bpm;
+
+    while(nextNoteTime < audioCtx.currentTime + lookahead){
+      const isDown = (beatInBar === 1);
+
+      if(isDown && advanceArmed){
+        advanceArmed = false;
+        scheduleUI(() => { advanceBar(); }, nextNoteTime);
+      }
+
+      scheduleClick(nextNoteTime, isDown);
+
+      if(autoEl.checked && beatInBar === beatsPerBar){
+        advanceArmed = true;
+      }
+
+      beatInBar++;
+      if(beatInBar > beatsPerBar) beatInBar = 1;
+
+      beatIndexGlobal++;
+      nextNoteTime += secondsPerBeat;
+    }
+  }
+
+  function startMetronome(){
+    stopMetronome();
+    bpm = clampInt(parseInt(bpmEl.value,10)||80, 30, 240);
+    beatsPerBar = clampInt(parseInt(beatsEl.value,10)||4, 1, 4);
+
+    beatInBar = 1;
+    advanceArmed = false;
+    nextNoteTime = audioCtx.currentTime + 0.08;
+
+    schedulerTimer = setInterval(scheduler, 25);
+    btnStart.disabled = true;
+    btnStop.disabled = false;
+    updateStatus("메트로놈 ON");
+  }
+
+  function stopMetronome(){
+    if(schedulerTimer){ clearInterval(schedulerTimer); schedulerTimer = null; }
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+    advanceArmed = false;
+    updateStatus("정지");
+  }
+
+  function advanceBar(){
+    if(!session) return;
+    const total = session.measures.length;
+    if(currentBar < total - 1){
+      currentBar++;
+      saveLastSession();
+      if(modeSelEl.value === "mobile2") drawMobile2();
+      else updateDesktopHighlight();
+    }else{
+      stopMetronome();
+    }
+    updateStatus();
+  }
+
+  function newAll(){
+    if(session) history.push(JSON.parse(JSON.stringify(session)));
+    btnPrev.disabled = history.length===0;
+
+    const lines = clampInt(parseInt(numLinesEl.value,10)||4, 1, 12);
+    const perLine = clampInt(parseInt(perLineEl.value,10)||7, 1, 12);
+    const b = clampInt(parseInt(bpmEl.value,10)||80, 30, 240);
+    const beats = clampInt(parseInt(beatsEl.value,10)||4, 1, 4);
+
+    session = makeSession(lines, perLine, b, beats);
+    currentBar = 0;
+    saveLastSession();
+    render();
+  }
+
+  function prev(){
+    if(history.length===0) return;
+    session = history.pop();
+    currentBar = 0;
+    btnPrev.disabled = history.length===0;
+    saveLastSession();
+    render();
+  }
+
+  // ✅ “처음부터 다시” (핵심 기능)
+  function restartFromBeginning(){
+    if(!session) return;
+
+    // 메트로놈이 켜져 있으면 멈추고, 박자 상태도 같이 초기화
+    stopMetronome();
+    beatInBar = 1;
+    advanceArmed = false;
+
+    currentBar = 0;
+    saveLastSession();
+    render(); // PC/모바일 모두 다시 그림
+  }
+
+  function jumpToBar(bar1Based){
+    if(!session) return;
+    const total = session.measures.length;
+
+    // 사용자가 1부터 입력하니까 0부터 쓰는 currentBar로 변환
+    const idx = clampInt((parseInt(bar1Based,10)||1) - 1, 0, total - 1);
+
+    // 박자/자동넘김 타이밍 꼬임 방지: 항상 리셋
+    stopMetronome();
+    beatInBar = 1;
+    advanceArmed = false;
+
+    currentBar = idx;
+    saveLastSession();
+    render(); // PC/모바일 모두 다시 그림
+  }
+
+  btnNewAll.addEventListener("click", newAll);
+  btnPrev.addEventListener("click", prev);
+
+  btnStart.addEventListener("click", async () => { await ensureAudio(); startMetronome(); });
+  btnStop.addEventListener("click", stopMetronome);
+
+  // ✅ 추가: restart 버튼 클릭
+  btnRestart.addEventListener("click", restartFromBeginning);
+  btnJump.addEventListener("click", () => {
+     jumpToBar(jumpBarEl.value);
+  });
+
+  btnJumpStart.addEventListener("click", async () => {
+     jumpToBar(jumpBarEl.value);
+     await ensureAudio();
+     startMetronome();
+  });
+
+  showBoxEl.addEventListener("change", () => {
+    if(modeSelEl.value === "mobile2") drawMobile2();
+    else updateDesktopHighlight();
+  });
+
+  modeSelEl.addEventListener("change", render);
+  window.addEventListener("resize", () => { clearTimeout(window.__rt); window.__rt = setTimeout(render, 120); });
+
+  btnSaveSet.addEventListener("click", () => {
+    if(!session) return;
+    const name = (saveNameEl.value||"").trim() || new Date().toLocaleString();
+    saveSetByName(name);
+    saveNameEl.value = "";
+    jsonBox.value = `✅ 저장됨: ${name}`;
+  });
+
+  btnLoadSet.addEventListener("click", () => {
+    const name = savedList.value;
+    if(!name) return;
+    if(loadSetByName(name)){
+      jsonBox.value = `✅ 불러옴: ${name}`;
+      render();
+    }
+  });
+
+  btnDelete.addEventListener("click", () => {
+    const name = savedList.value;
+    if(!name) return;
+    deleteSetByName(name);
+    jsonBox.value = `🗑️ 삭제됨: ${name}`;
+  });
+
+  btnExport.addEventListener("click", () => {
+    if(!session) return;
+    const payload = { type:"piano_session_v2", session, currentBar };
+    const txt = JSON.stringify(payload, null, 2);
+    jsonBox.value = txt;
+
+    const blob = new Blob([txt], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `piano_session_${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  });
+
+  btnImport.addEventListener("click", () => fileImport.click());
+  fileImport.addEventListener("change", async () => {
+    const f = fileImport.files?.[0];
+    if(!f) return;
+    const txt = await f.text();
+    try{
+      const obj = JSON.parse(txt);
+      if(obj?.type === "piano_session_v2" && obj.session?.measures){
+        history.push(JSON.parse(JSON.stringify(session)));
+        btnPrev.disabled = history.length===0;
+        session = obj.session;
+        currentBar = Math.max(0, Math.min(session.measures.length-1, obj.currentBar||0));
+        numLinesEl.value = session.lines;
+        perLineEl.value  = session.perLine;
+        bpmEl.value      = session.bpm;
+        beatsEl.value    = session.beatsPerBar;
+        saveLastSession();
+        render();
+        jsonBox.value = "✅ 가져오기 성공";
+      }else{
+        jsonBox.value = "❌ 가져오기 실패(형식 불일치)";
+      }
+    }catch(e){
+      jsonBox.value = "❌ JSON 파싱 실패";
+    }
+    fileImport.value = "";
+  });
+
+  btnClearAll.addEventListener("click", () => {
+    localStorage.removeItem(LS_SETS);
+    refreshSavedList();
+    jsonBox.value = "✅ 모든 저장 초기화 완료";
+  });
+
+  refreshSavedList();
+
+  const restored = loadLastSession();
+  if(!restored){
+    session = makeSession(
+      parseInt(numLinesEl.value,10)||4,
+      parseInt(perLineEl.value,10)||7,
+      parseInt(bpmEl.value,10)||80,
+      parseInt(beatsEl.value,10)||4
+    );
+    currentBar = 0;
+    saveLastSession();
+  }
+
+  render();
+})();
+</script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js");
+    });
+  }
+</script>
+</body>
+</html>
